@@ -114,11 +114,10 @@ function processSite(parser, delay, item, agent, shop, urlDetails, cb) {
                 }
               }
             }
-            if (product.name) {
+            if (product.name && product.price && product.price !== 'NaN') {
               product.url = url;
               product.shop = shop;
               product.datetime = moment().format();
-              console.log(JSON.stringify(product));
               putProduct(urlDetails, JSON.stringify(product), function (err, operation) {
                 if (err) {
                   return cb(err);
