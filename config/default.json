@@ -2,5 +2,6 @@
   "url": "url",
   "shop": "shop",
   "agent": "agent",
-  "watzdprice_url": "watzdprice_url"
+  "watzdprice_url": "watzdprice_url",
+  "dryrun": "true"
 }
