@@ -8,11 +8,14 @@ var sitemapper = require('./sitemap.js');
 var moment = require('moment');
 
 module.exports = {
-  process: function(start_url, watzdprice_url, shop, agent, cb) {
+  process: function(dryrun, start_url, watzdprice_url, shop, agent, cb) {
+    if (dryrun) console.log('Running in dryrun mode!');
     var start = moment().format();
     var added = 0;
     var updated = 0;
 
+    var startUrlDetails = url.parse(start_url);
+    console.log(startUrlDetails);
     var urlDetails = url.parse(watzdprice_url);
     var parser = new robots.RobotsParser();
     parser.setUrl(start_url, function(parser, success) {
@@ -28,7 +31,7 @@ module.exports = {
               return cb(err);
             }
             async.eachLimit(all_urls, 1, function (item, callbackSites) {
-              processSite(parser, delay, item, agent, shop, urlDetails, function (err, operation) {
+              processSite(dryrun, startUrlDetails.hostname, parser, delay, item, agent, shop, urlDetails, function (err, operation) {
                 if (err) {
                   return callbackSites(err);
                 }
@@ -38,19 +41,25 @@ module.exports = {
                 if (operation === 'updated') {
                   updated++;
                 }
-                callbackSites();
+                return callbackSites();
               });
             }, function (err) {
               if (err) {
                 return cb(err);
               }
-               return postShopLoadStats(urlDetails, JSON.stringify({
+              var stats = JSON.stringify({
                 shop: shop,
                 start: start,
                 end: moment().format(),
                 added: added,
                 updated: updated
-              }), cb);
+              });
+              if (dryrun) {
+                console.log(stats);
+                return cb(null);
+              } else {
+                return postShopLoadStats(urlDetails, stats, cb);
+              }
             });
           });
         });
@@ -59,88 +68,97 @@ module.exports = {
   }
 }
 
-function processSite(parser, delay, item, agent, shop, urlDetails, cb) {
-  parser.canFetch('watzdprice', item, function (access) {
-    if (access) {
-      setTimeout(function (url) {
-        request({
-            url: url,
-            headers: {
-              'User-Agent': agent,
+function processSite(dryrun, hostname, parser, delay, item, agent, shop, urlDetails, cb) {
+  if (item.indexOf(hostname) !== -1) {
+    parser.canFetch('watzdprice', item, function (access) {
+      if (access) {
+        setTimeout(function (url) {
+          request({
+              url: url,
+              headers: {
+                'User-Agent': agent,
+              }
+            }, function(err, resp, body) {
+            if (err) {
+              console.error(shop + " - Error downloading url: " + err.message + " - " + url);
+              return cb(null,null);
             }
-          }, function(err, resp, body) {
-          if (err) {
-            console.error(shop + " - Error downloading url: " + err.message + " - " + url);
-            return cb(null,null);
-          }
-          console.log(shop + " - " + url);
-          schema.parseContent(body, function(msg){
-            try {
-              var product = {};
-              for (var i = 0, ilen = msg.elems.length; i < ilen; i++) {
-                if (msg.elems[i].product) {
-                  for (var j = 0, jlen = msg.elems[i].product.length; j < jlen; j++) {
-                    if (msg.elems[i].product[j].name && msg.elems[i].product[j].name.text) {
-                      product.name = msg.elems[i].product[j].name.text.substring(0,255);
-                    }
-                    if (msg.elems[i].product[j].gtin13 && msg.elems[i].product[j].gtin13.text) {
-                      product.eancode = msg.elems[i].product[j].gtin13.text.substring(0,255);
-                    }
-                    if (msg.elems[i].product[j].gtin13 && msg.elems[i].product[j].gtin13.content) {
-                      product.eancode = msg.elems[i].product[j].gtin13.content.substring(0,255);
-                    }
-                    if (msg.elems[i].product[j].brand && msg.elems[i].product[j].brand.text) {
-                      product.brand = msg.elems[i].product[j].brand.text.substring(0,255);
-                    }
-                    if (msg.elems[i].product[j].brand && msg.elems[i].product[j].brand.content) {
-                      product.brand = msg.elems[i].product[j].brand.content.substring(0,255);
-                    }
-                    if (msg.elems[i].product[j].price && msg.elems[i].product[j].price.text) {
-                      product.price = parseFloat(msg.elems[i].product[j].price.text.replace(',','.'));
-                    }
-                    if (msg.elems[i].product[j].price && msg.elems[i].product[j].price.content) {
-                      product.price = parseFloat(msg.elems[i].product[j].price.content.replace(',','.'));
-                    }
-                    if (msg.elems[i].product[j].image && msg.elems[i].product[j].image.content) {
-                      product.image = msg.elems[i].product[j].image.content.substring(0,1999);
-                    }
-                    if (msg.elems[i].product[j].image && msg.elems[i].product[j].image.src) {
-                      product.image = msg.elems[i].product[j].image.src.substring(0,1999);
-                    }
-                    if (msg.elems[i].product[j].description && msg.elems[i].product[j].description.text) {
-                      product.description = msg.elems[i].product[j].description.text.substring(0,1999);
-                    }
-                    if (msg.elems[i].product[j].description && msg.elems[i].product[j].description.content) {
-                      product.description = msg.elems[i].product[j].description.content.substring(0,1999);
+            console.log(shop + " - " + url);
+            schema.parseContent(body, function(msg){
+              try {
+                var product = {};
+                for (var i = 0, ilen = msg.elems.length; i < ilen; i++) {
+                  if (msg.elems[i].product) {
+                    for (var j = 0, jlen = msg.elems[i].product.length; j < jlen; j++) {
+                      if (!product.name && msg.elems[i].product[j].name && msg.elems[i].product[j].name.text) {
+                        product.name = msg.elems[i].product[j].name.text.substring(0,255);
+                      }
+                      if (!product.eancode && msg.elems[i].product[j].gtin13 && msg.elems[i].product[j].gtin13.text) {
+                        product.eancode = msg.elems[i].product[j].gtin13.text.substring(0,255);
+                      }
+                      if (!product.eancode && msg.elems[i].product[j].gtin13 && msg.elems[i].product[j].gtin13.content) {
+                        product.eancode = msg.elems[i].product[j].gtin13.content.substring(0,255);
+                      }
+                      if (!product.brand && msg.elems[i].product[j].brand && msg.elems[i].product[j].brand.text) {
+                        product.brand = msg.elems[i].product[j].brand.text.substring(0,255);
+                      }
+                      if (!product.brand && msg.elems[i].product[j].brand && msg.elems[i].product[j].brand.content) {
+                        product.brand = msg.elems[i].product[j].brand.content.substring(0,255);
+                      }
+                      if (!product.price && msg.elems[i].product[j].price && msg.elems[i].product[j].price.text) {
+                        product.price = parseFloat(msg.elems[i].product[j].price.text.replace(',','.'));
+                      }
+                      if (!product.price && msg.elems[i].product[j].price && msg.elems[i].product[j].price.content) {
+                        product.price = parseFloat(msg.elems[i].product[j].price.content.replace(',','.'));
+                      }
+                      if (!product.image && msg.elems[i].product[j].image && msg.elems[i].product[j].image.content) {
+                        product.image = msg.elems[i].product[j].image.content.substring(0,1999);
+                      }
+                      if (!product.image && msg.elems[i].product[j].image && msg.elems[i].product[j].image.src) {
+                        product.image = msg.elems[i].product[j].image.src.substring(0,1999);
+                      }
+                      if (!product.description && msg.elems[i].product[j].description && msg.elems[i].product[j].description.text) {
+                        product.description = msg.elems[i].product[j].description.text.substring(0,1999);
+                      }
+                      if (!product.description && msg.elems[i].product[j].description && msg.elems[i].product[j].description.content) {
+                        product.description = msg.elems[i].product[j].description.content.substring(0,1999);
+                      }
                     }
                   }
                 }
-              }
-              if (product.name && product.price && product.price !== 'NaN') {
-                product.url = url;
-                product.shop = shop;
-                product.datetime = moment().format();
-                putProduct(urlDetails, JSON.stringify(product), function (err, operation) {
-                  if (err) {
-                    console.error(shop + " - Error putProduct: " + err.message + " - " + url + " - " + JSON.stringify(msg) + " - " + JSON.stringify(product));
-                    return cb(null, null);
+                if (product.name && product.price && product.price !== 'NaN') {
+                  product.url = url;
+                  product.shop = shop;
+                  product.datetime = moment().format();
+                  if (dryrun) {
+                    console.log(JSON.stringify(product));
+                    return cb(null, 'added');
+                  } else  {
+                    putProduct(urlDetails, JSON.stringify(product), function (err, operation) {
+                      if (err) {
+                        console.error(shop + " - Error putProduct: " + err.message + " - " + url + " - " + JSON.stringify(msg) + " - " + JSON.stringify(product));
+                        return cb(null, null);
+                      }
+                      return cb(null, operation);
+                    });
                   }
-                  cb(null, operation);
-                });
-              } else {
-                cb(null, null);
+                } else {
+                  return cb(null, null);
+                }
+              } catch (err) {
+                console.error(shop + " - Error: " + err.message + " - " + url + " - " + JSON.stringify(msg) + " - " + JSON.stringify(product) );
+                return cb(null, null);
               }
-            } catch (err) {
-              console.error(shop + " - Error: " + err.message + " - " + url + " - " + JSON.stringify(msg) + " - " + JSON.stringify(product) );
-              cb(null, null);
-            }
+            });
           });
-        });
-      }, delay*1000, item);
-    } else {
-      cb();
-    }
-  });
+        }, delay*1000, item);
+      } else { // no access
+        cb(null, null);
+      }
+    });
+  } else { // hostname does not match
+    cb(null, null);
+  }
 }
 
 function putProduct (urlDetails, product, callback) {
