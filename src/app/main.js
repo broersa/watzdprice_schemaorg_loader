@@ -21,8 +21,8 @@ module.exports = {
       if(success) {
         var delay = parser.getCrawlDelay(agent);
         if (!delay) delay = 0;
-        var all_urls = [];
         parser.getSitemaps(function(sitemaps) {
+          var all_urls = [];
           sitemapper.parseSitemaps(sitemaps, agent, function (site) {
             all_urls.push(site);
           }, function (err) {
