@@ -21,8 +21,8 @@ module.exports = {
       if(success) {
         var delay = parser.getCrawlDelay(agent);
         if (!delay) delay = 0;
-        var all_urls = [];
         parser.getSitemaps(function(sitemaps) {
+          var all_urls = [];
           sitemapper.parseSitemaps(sitemaps, agent, function (site) {
             if (site.indexOf(startUrlDetails.hostname) !== -1) {
               all_urls.push(site);
@@ -145,7 +145,7 @@ function processSite(dryrun, parser, delay, item, agent, shop, urlDetails, cb) {
                   return cb(null, operation);
                 });
               }
-            } else {
+            } else { // no complete product
               return cb(null, null);
             }
           });
@@ -170,15 +170,18 @@ function putProduct (urlDetails, product, callback) {
   };
   // Set up the request
   var put_req = http.request(put_options, function(res) {
-      res.setEncoding('utf8');
-      var body = '';
-      res.on('data', function (chunk) {
-        body = body + chunk;
-      });
-      res.on('end', function() {
-        var d = JSON.parse(body);
-        callback(null, d.operation);
-      })
+    res.setEncoding('utf8');
+    var body = '';
+    res.on('data', function (chunk) {
+      body = body + chunk;
+    });
+    res.on('end', function() {
+      var d = JSON.parse(body);
+      callback(null, d.operation);
+    });
+    res.on('error', function(err) {
+      callback(err, null);
+    });
   });
 
   // post the data
@@ -200,10 +203,13 @@ function postShopLoadStats (urlDetails, shopLoadStats, callback) {
 
   // Set up the request
   var put_req = http.request(post_options, function(res) {
-      res.setEncoding('utf8');
-      res.on('end', function() {
-        callback(null);
-      })
+    res.setEncoding('utf8');
+    res.on('end', function() {
+      callback(null);
+    });
+    res.on('error', function(err) {
+      callback(err);
+    });
   });
 
   // post the data
