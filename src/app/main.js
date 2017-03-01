@@ -15,7 +15,6 @@ module.exports = {
     var updated = 0;
 
     var startUrlDetails = url.parse(start_url);
-    console.log(startUrlDetails);
     var urlDetails = url.parse(watzdprice_url);
     var parser = new robots.RobotsParser();
     parser.setUrl(start_url, function(parser, success) {
@@ -84,7 +83,7 @@ function processSite(dryrun, hostname, parser, delay, item, agent, shop, urlDeta
               return cb(null,null);
             }
             console.log(shop + " - " + url);
-            schema.parseContent(body, function(msg){
+            schema.parseContent(body, function(msg) {
               try {
                 var product = {};
                 for (var i = 0, ilen = msg.elems.length; i < ilen; i++) {
@@ -126,38 +125,38 @@ function processSite(dryrun, hostname, parser, delay, item, agent, shop, urlDeta
                     }
                   }
                 }
-                if (product.name && product.price && product.price !== 'NaN') {
-                  product.url = url;
-                  product.shop = shop;
-                  product.datetime = moment().format();
-                  if (dryrun) {
-                    console.log(JSON.stringify(product));
-                    return cb(null, 'added');
-                  } else  {
-                    putProduct(urlDetails, JSON.stringify(product), function (err, operation) {
-                      if (err) {
-                        console.error(shop + " - Error putProduct: " + err.message + " - " + url + " - " + JSON.stringify(msg) + " - " + JSON.stringify(product));
-                        return cb(null, null);
-                      }
-                      return cb(null, operation);
-                    });
-                  }
-                } else {
-                  return cb(null, null);
-                }
               } catch (err) {
                 console.error(shop + " - Error: " + err.message + " - " + url + " - " + JSON.stringify(msg) + " - " + JSON.stringify(product) );
+                return cb(null, null);
+              }
+              if (product.name && product.price && product.price !== 'NaN') {
+                product.url = url;
+                product.shop = shop;
+                product.datetime = moment().format();
+                if (dryrun) {
+                  console.log(JSON.stringify(product));
+                  return cb(null, 'added');
+                } else {
+                  putProduct(urlDetails, JSON.stringify(product), function (err, operation) {
+                    if (err) {
+                      console.error(shop + " - Error putProduct: " + err.message + " - " + url + " - " + JSON.stringify(msg) + " - " + JSON.stringify(product));
+                      return cb(null, null);
+                    }
+                    return cb(null, operation);
+                  });
+                }
+              } else {
                 return cb(null, null);
               }
             });
           });
         }, delay*1000, item);
       } else { // no access
-        cb(null, null);
+        return cb(null, null);
       }
     });
   } else { // hostname does not match
-    cb(null, null);
+    return cb(null, null);
   }
 }
 
