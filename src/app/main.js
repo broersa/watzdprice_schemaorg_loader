@@ -6,6 +6,8 @@ var schema = require("./schemaParser.js");
 var request = require("request");
 var sitemapper = require('./sitemap.js');
 var moment = require('moment');
+var productParser = require('./productParser.js');
+var MyError = require('../MyError.js');
 
 module.exports = {
   process: function(dryrun, start_url, watzdprice_url, shop, agent, cb) {
@@ -70,6 +72,7 @@ module.exports = {
 }
 
 function processSite(dryrun, parser, delay, item, agent, shop, urlDetails, cb) {
+  console.log(item);
   parser.canFetch('watzdprice', item, function (access) {
     if (access) {
       setTimeout(function (url) {
@@ -80,79 +83,44 @@ function processSite(dryrun, parser, delay, item, agent, shop, urlDetails, cb) {
             }
           }, function(err, resp, body) {
           if (err) {
-            console.error(shop + " - Error downloading url: " + err.message + " - " + url);
-            return cb(null,null);
+            if (dryrun) {
+              console.error(JSON.stringify(err));
+            }
+            return cb();
           }
           schema.parseContent(body, function(msg) {
-            try {
-              var product = {};
-              for (var i = 0, ilen = msg.elems.length; i < ilen; i++) {
-                if (msg.elems[i].product) {
-                  for (var j = 0, jlen = msg.elems[i].product.length; j < jlen; j++) {
-                    if (!product.name && msg.elems[i].product[j].name && msg.elems[i].product[j].name.text) {
-                      product.name = msg.elems[i].product[j].name.text.substring(0,255);
-                    }
-                    if (!product.eancode && msg.elems[i].product[j].gtin13 && msg.elems[i].product[j].gtin13.text) {
-                      product.eancode = msg.elems[i].product[j].gtin13.text.substring(0,255);
-                    }
-                    if (!product.eancode && msg.elems[i].product[j].gtin13 && msg.elems[i].product[j].gtin13.content) {
-                      product.eancode = msg.elems[i].product[j].gtin13.content.substring(0,255);
-                    }
-                    if (!product.brand && msg.elems[i].product[j].brand && msg.elems[i].product[j].brand.text) {
-                      product.brand = msg.elems[i].product[j].brand.text.substring(0,255);
-                    }
-                    if (!product.brand && msg.elems[i].product[j].brand && msg.elems[i].product[j].brand.content) {
-                      product.brand = msg.elems[i].product[j].brand.content.substring(0,255);
-                    }
-                    if (!product.price && msg.elems[i].product[j].price && msg.elems[i].product[j].price.text) {
-                      product.price = parseFloat(msg.elems[i].product[j].price.text.replace(',','.'));
-                    }
-                    if (!product.price && msg.elems[i].product[j].price && msg.elems[i].product[j].price.content) {
-                      product.price = parseFloat(msg.elems[i].product[j].price.content.replace(',','.'));
-                    }
-                    if (!product.image && msg.elems[i].product[j].image && msg.elems[i].product[j].image.content) {
-                      product.image = msg.elems[i].product[j].image.content.substring(0,1999);
-                    }
-                    if (!product.image && msg.elems[i].product[j].image && msg.elems[i].product[j].image.src) {
-                      product.image = msg.elems[i].product[j].image.src.substring(0,1999);
-                    }
-                    if (!product.description && msg.elems[i].product[j].description && msg.elems[i].product[j].description.text) {
-                      product.description = msg.elems[i].product[j].description.text.substring(0,1999);
-                    }
-                    if (!product.description && msg.elems[i].product[j].description && msg.elems[i].product[j].description.content) {
-                      product.description = msg.elems[i].product[j].description.content.substring(0,1999);
-                    }
-                  }
+            productParser.parseProduct(msg, function (err, product) {
+              if (err) {
+                if (dryrun) {
+                  console.error(JSON.stringify(err));
                 }
+                return cb();
               }
-            } catch (err) {
-              console.error(shop + " - Error: " + err.message + " - " + url + " - " + JSON.stringify(msg) + " - " + JSON.stringify(product) );
-              return cb(null, null);
-            }
-            if (product.name && product.price && product.price !== 'NaN') {
-              product.url = url;
-              product.shop = shop;
-              product.datetime = moment().format();
-              if (dryrun) {
-                console.log(JSON.stringify(product));
-                return cb(null, 'added');
-              } else {
-                putProduct(urlDetails, JSON.stringify(product), function (err, operation) {
-                  if (err) {
-                    console.error(shop + " - Error putProduct: " + err.message + " - " + url + " - " + JSON.stringify(msg) + " - " + JSON.stringify(product));
-                    return cb(null, null);
-                  }
-                  return cb(null, operation);
-                });
+              if (product.name && product.price && product.price !== 'NaN') {
+                product.url = url;
+                product.shop = shop;
+                product.datetime = moment().format();
+                if (dryrun) {
+                  console.log(JSON.stringify(product));
+                  return cb(null, 'added');
+                } else {
+                  putProduct(urlDetails, JSON.stringify(product), function (err, operation) {
+                    if (err) {
+                      console.error(JSON.stringify(new MyError('ERROR', 'processSite', 'Error', {dryrun: dryrun, item: item, shop: shop, urlDetails: urlDetails}, err)));
+                      return cb();
+                    }
+                    return cb(null, operation);
+                  });
+                }
+              } else { // no complete product
+                return cb();
               }
-            } else { // no complete product
-              return cb(null, null);
-            }
+            });
           });
         });
       }, delay*1000, item);
     } else { // no access
-      return cb(null, null);
+      return cb();
     }
   });
 }
@@ -180,7 +148,7 @@ function putProduct (urlDetails, product, callback) {
       callback(null, d.operation);
     });
     res.on('error', function(err) {
-      callback(err, null);
+      callback(new MyError('ERROR', 'putProduct', 'Error', {urlDetails: urlDetails, product: product}, err));
     });
   });
 
@@ -205,10 +173,10 @@ function postShopLoadStats (urlDetails, shopLoadStats, callback) {
   var put_req = http.request(post_options, function(res) {
     res.setEncoding('utf8');
     res.on('end', function() {
-      callback(null);
+      callback();
     });
     res.on('error', function(err) {
-      callback(err);
+      callback(new MyError('ERROR', 'postShopLoadStats', 'Error', {urlDetails: urlDetails, shopLoadStats: shopLoadStats}, err));
     });
   });
 
