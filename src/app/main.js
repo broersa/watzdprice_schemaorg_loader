@@ -107,6 +107,9 @@ function processSite(dryrun, parser, delay, item, agent, shop, urlDetails, cb) {
                   }
                   if (!product.description) {
                     product.description = $('p.description').first().text();
+                    if (!product.description) {
+                      product.description = $('meta[property="og:description"]').attr('content');
+                    }
                   }
                 }
                 product.url = url;
