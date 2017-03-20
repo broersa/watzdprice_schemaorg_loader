@@ -72,7 +72,6 @@ module.exports = {
 }
 
 function processSite(dryrun, parser, delay, item, agent, shop, urlDetails, cb) {
-  console.log(item);
   parser.canFetch('watzdprice', item, function (access) {
     if (access) {
       setTimeout(function (url) {
