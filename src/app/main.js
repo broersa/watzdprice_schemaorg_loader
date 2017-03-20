@@ -8,9 +8,10 @@ var sitemapper = require('./sitemap.js');
 var moment = require('moment');
 var productParser = require('./productParser.js');
 var MyError = require('../MyError.js');
+var cheerio = require('cheerio');
 
 module.exports = {
-  process: function(dryrun, start_url, watzdprice_url, shop, agent, cb) {
+  process: function(dryrun, start_url, urlFilter, watzdprice_url, shop, agent, cb) {
     if (dryrun) console.log('Running in dryrun mode!');
     var start = moment().format();
     var added = 0;
@@ -26,7 +27,7 @@ module.exports = {
         parser.getSitemaps(function(sitemaps) {
           var all_urls = [];
           sitemapper.parseSitemaps(sitemaps, agent, function (site) {
-            if (site.indexOf(startUrlDetails.hostname) !== -1) {
+            if (urlFilter == '' || site.indexOf(urlFilter) !== -1) {
               all_urls.push(site);
             }
           }, function (err) {
@@ -34,6 +35,9 @@ module.exports = {
               return cb(err);
             }
             async.eachLimit(all_urls, 1, function (item, callbackSites) {
+              if (dryrun) {
+                console.log(item);
+              }
               processSite(dryrun, parser, delay, item, agent, shop, urlDetails, function (err, operation) {
                 if (err) {
                   return callbackSites(err);
@@ -96,11 +100,23 @@ function processSite(dryrun, parser, delay, item, agent, shop, urlDetails, cb) {
                 return cb();
               }
               if (product.name && product.price && product.price !== 'NaN') {
+                if (!product.image || !product.description) {
+                  var $ = cheerio.load(body);
+                  if (!product.image) {
+                    product.image = $('meta[property="og:image"]').attr('content');
+                  }
+                  if (!product.description) {
+                    product.description = $('p.description').first().text();
+                  }
+                }
                 product.url = url;
                 product.shop = shop;
                 product.datetime = moment().format();
                 if (dryrun) {
-                  console.log(JSON.stringify(product));
+                  console.log('product found:');
+                  console.log(JSON.stringify(msg, null, 1));
+                  console.log('-------------');
+                  console.log(JSON.stringify(product, null, 1));
                   return cb(null, 'added');
                 } else {
                   putProduct(urlDetails, JSON.stringify(product), function (err, operation) {
