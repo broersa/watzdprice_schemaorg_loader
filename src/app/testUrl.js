@@ -1,6 +1,7 @@
 var schema = require("./schemaParser.js");
 var request = require("request");
 var productParser = require('./productParser.js');
+var cheerio = require('cheerio');
 
 processSite(process.argv[2]);
 
@@ -21,6 +22,15 @@ function processSite(item) {
           if (err) {
             console.error(JSON.stringify(err));
           } else {
+            if (!product.image || !product.description) {
+              var $ = cheerio.load(body);
+              if (!product.image) {
+                product.image = $('meta[property="og:image"]').attr('content');
+              }
+              if (!product.description) {
+                product.description = $('p.description').first().text();
+              }
+            }
             console.log(url + " - " + JSON.stringify(msg) + " - " + JSON.stringify(product) );
           }
         });
